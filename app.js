@@ -868,7 +868,8 @@ $('#c-file').addEventListener('change', async e => {
       msg.textContent = `Sheet berisi ${r.days ?? '?'} hari. Belum masuk: ${dates}. Alasan: ${r.failed[0].error}. Impor lagi untuk mencoba sisanya.`;
       return;
     }
-    msg.textContent = `Selesai. Sheet sekarang berisi ${r.days} hari catatan. Memuat ulang…`; setTimeout(() => location.reload(), 1500);
+    const kept = r.skipped.length ? ` ${r.skipped.length} hari dilewati karena versi di Sheet lebih baru.` : '';
+    msg.textContent = `Selesai. Sheet sekarang berisi ${r.days ?? 'semua'} hari catatan.${kept} Memuat ulang…`; setTimeout(() => location.reload(), 2500);
   } catch (err) { msg.textContent = 'Impor gagal: ' + err.message + '. Coba impor lagi; data yang sudah masuk tidak akan dobel.'; }
 });
 SheetStore.on((state, d) => {

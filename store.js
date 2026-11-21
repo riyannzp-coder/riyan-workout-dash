@@ -85,6 +85,10 @@
   async function importDocs(docs, onProgress) {
     const CHUNK = 6, failed = [];
     let days = null;
+    // never overwrite a day that was edited in the sheet after the export was made
+    ready = null; await load();
+    const skipped = docs.filter(d => { const cur = cache[d.path]; return cur && cur.updated && d.data.updated && cur.updated > d.data.updated; });
+    docs = docs.filter(d => !skipped.includes(d));
     for (let i = 0; i < docs.length; i += CHUNK) {
       const part = docs.slice(i, i + CHUNK);
       try { days = (await call('import', { docs: part })).days; }
@@ -95,7 +99,7 @@
       onProgress && onProgress(Math.min(docs.length, i + CHUNK), docs.length);
     }
     ready = null; await load();
-    return { days, failed };
+    return { days, failed, skipped: skipped.map(d => d.path) };
   }
 
   async function connect(url, key) {
