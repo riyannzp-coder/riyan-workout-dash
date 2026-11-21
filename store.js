@@ -80,13 +80,16 @@
   async function days() { await load(); return Object.keys(cache).filter(k => k.startsWith('days/')).map(k => cache[k]); }
 
   // one-time move of an exported JSON ({ docs: [{ path, data }] }) into the sheet
+  // the sheet writes each batch in one go; returns how many days the sheet holds afterwards
   async function importDocs(docs, onProgress) {
-    const CHUNK = 15;
+    const CHUNK = 30;
+    let out = {};
     for (let i = 0; i < docs.length; i += CHUNK) {
-      await call('import', { docs: docs.slice(i, i + CHUNK) });
+      out = await call('import', { docs: docs.slice(i, i + CHUNK) });
       onProgress && onProgress(Math.min(docs.length, i + CHUNK), docs.length);
     }
     ready = null; await load();
+    return out;
   }
 
   async function connect(url, key) {

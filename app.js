@@ -862,9 +862,9 @@ $('#c-file').addEventListener('change', async e => {
   if (!SheetStore.configured()) { msg.textContent = 'Sambungkan dulu ke Sheets, baru impor.'; return; }
   try {
     const docs = (JSON.parse(await f.text()).docs || []).filter(d => d && d.path && d.data);
-    await SheetStore.importDocs(docs, (n, all) => { msg.textContent = `Mengimpor ${n}/${all}…`; });
-    msg.textContent = `${docs.length} dokumen masuk ke Sheets. Memuat ulang…`; setTimeout(() => location.reload(), 800);
-  } catch (err) { msg.textContent = 'Impor gagal: ' + err.message; }
+    const r = await SheetStore.importDocs(docs, (n, all) => { msg.textContent = `Mengimpor ${n}/${all}…`; });
+    msg.textContent = `Selesai. Sheet sekarang berisi ${r.days} hari catatan. Memuat ulang…`; setTimeout(() => location.reload(), 1500);
+  } catch (err) { msg.textContent = 'Impor gagal: ' + err.message + '. Coba impor lagi; data yang sudah masuk tidak akan dobel.'; }
 });
 SheetStore.on((state, d) => {
   if (state === 'synced') setStatus('saved', 'Tersinkron dengan Sheets');

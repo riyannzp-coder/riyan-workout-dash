@@ -60,10 +60,8 @@ function doPost(e) {
       case 'ping': return json_({ ok: true, sheet: SpreadsheetApp.getActiveSpreadsheet().getName() });
       case 'all': return json_(Object.assign({ ok: true }, readAll_()));
       case 'set': return withLock_(() => { writeDoc_(body.path, body.data); return json_({ ok: true }); });
-      case 'import': return withLock_(() => {
-        (body.docs || []).forEach(d => writeDoc_(d.path, d.data));
-        return json_({ ok: true, n: (body.docs || []).length });
-      });
+      case 'import': return withLock_(() => json_(Object.assign({ ok: true }, importDocs_(body.docs || []))));
+      case 'count': return json_({ ok: true, days: rows_('days').length });
       default: return json_({ ok: false, error: 'unknown_action' });
     }
   } catch (err) {
@@ -93,6 +91,51 @@ function writeDoc_(path, data) {
     return;
   }
   throw new Error('bad_collection');
+}
+
+// bulk import: one read and one write per tab, then the readable tabs are rebuilt once
+function importDocs_(docs) {
+  const now = new Date();
+  docs.filter(d => String(d.path).indexOf('fit/') === 0)
+    .forEach(d => upsert_('fit', d.path.split('/')[1], [d.path.split('/')[1], JSON.stringify(d.data), now]));
+  const sh = sheet_('days'), last = sh.getLastRow();
+  const byDate = {};
+  if (last > 1) sh.getRange(2, 1, last - 1, 3).getValues().forEach(r => { byDate[String(r[0])] = r; });
+  let n = 0;
+  docs.forEach(d => {
+    const parts = String(d.path).split('/');
+    if (parts[0] !== 'days' || !/^\d{4}-\d{2}-\d{2}$/.test(parts[1]) || !d.data) return;
+    byDate[parts[1]] = [parts[1], JSON.stringify(d.data), now]; n++;
+  });
+  const rows = Object.keys(byDate).sort().map(k => byDate[k]);
+  if (last > 1) sh.getRange(2, 1, last - 1, 3).clearContent();
+  if (rows.length) sh.getRange(2, 1, rows.length, 3).setValues(rows);
+  rebuildViews_();
+  return { n: n, days: rows.length };
+}
+
+// readable tabs (log, ukuran) rebuilt from every day at once
+function rebuildViews_() {
+  const days = rows_('days').map(r => parse_(r[1])).filter(Boolean)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const log = [], uk = [];
+  days.forEach(day => {
+    ['home', 'gym'].forEach(kind => {
+      const s = day[kind]; if (!s || !s.ex) return;
+      s.ex.forEach(e => (e.sets || []).forEach((v, j) => {
+        if (v == null || v === '') return;
+        const kg = e.kgs && e.kgs[j] != null ? e.kgs[j] : (e.kg != null ? e.kg : '');
+        log.push([day.date, kind === 'gym' ? 'Gym' : 'Rumah', s.tpl || '', e.n, j + 1, v, e.u || 'reps', kg]);
+      }));
+    });
+    const m = day.m || {}, vals = METRIC_KEYS.map(k => (m[k] == null ? '' : m[k]));
+    if (vals.some(v => v !== '')) uk.push([day.date].concat(vals));
+  });
+  [['log', log], ['ukuran', uk]].forEach(([tab, rows]) => {
+    const sh = sheet_(tab), last = sh.getLastRow(), w = TABS[tab].length;
+    if (last > 1) sh.getRange(2, 1, last - 1, w).clearContent();
+    if (rows.length) sh.getRange(2, 1, rows.length, w).setValues(rows);
+  });
 }
 
 function upsert_(tab, id, row) {
