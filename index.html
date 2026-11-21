@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Riyan Workout Dash</title>
+<meta name="theme-color" content="#13284A">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="band"><div class="band-in">
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow" id="hdr-eyebrow">Program pemula · kalistenik + gym</div>
+      <h1 id="hdr-title">Workout Dash</h1>
+      <div class="sub" id="hdr-sub">Memuat data…</div>
+    </div>
+    <div class="top-tools"><button class="conn-btn" data-connect>Sambungan data</button><div class="status" id="status" data-s="idle"><span class="dot"></span><span id="status-t">Siap</span></div></div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="ringkasan" aria-selected="true">Ringkasan</button>
+    <button role="tab" data-tab="hariini" aria-selected="false">Hari ini</button>
+    <button role="tab" data-tab="menu" aria-selected="false">Menu mingguan</button>
+    <button role="tab" data-tab="ukuran" aria-selected="false">Ukuran tubuh</button>
+  </nav>
+</div></div>
+<div class="wrap">
+  <div class="warn" id="local-warn" hidden><b>Belum tersambung ke Google Sheets</b><span>Catatan baru hanya tersimpan di perangkat ini. Sambungkan sekali di perangkat ini, setelah itu semua data tersimpan di Sheet milikmu.</span><div><button class="btn sm" data-connect>Sambungkan sekarang</button></div></div>
+  <div class="warn" id="offline-warn" hidden><b>Sedang offline</b><span>Menampilkan data terakhir di perangkat ini. Isian baru disimpan dulu di sini dan dikirim ke Sheets begitu koneksi kembali.</span></div>
+
+  <section id="tab-ringkasan" data-panel="ringkasan"></section>
+  <section id="tab-hariini" data-panel="hariini" hidden></section>
+  <section id="tab-menu" data-panel="menu" hidden></section>
+  <section id="tab-ukuran" data-panel="ukuran" hidden></section>
+</div>
+
+
+<dialog id="connect" aria-labelledby="c-title">
+  <div class="dlg">
+    <div class="eyebrow">Data store</div>
+    <h2 id="c-title">Sambungan Google Sheets</h2>
+    <p class="muted">Tempel URL Web App (berakhiran <code>/exec</code>) dan kunci API dari log Apps Script. Keduanya hanya disimpan di perangkat ini.</p>
+    <label class="field"><span>URL Apps Script</span><input id="c-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+    <label class="field"><span>Kunci API</span><input id="c-key" type="password" autocomplete="off"></label>
+    <div class="row"><button class="btn" id="c-save">Simpan & tes</button><button class="btn ghost" id="c-close">Tutup</button><span class="spacer"></span><button class="btn danger sm" id="c-disconnect" hidden>Putuskan</button></div>
+    <label class="field"><span>Impor data lama (file JSON hasil ekspor, sekali saja)</span><input id="c-file" type="file" accept="application/json,.json"></label>
+    <p class="muted" id="c-msg" role="status"></p>
+  </div>
+</dialog>
+
+<script src="engine.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

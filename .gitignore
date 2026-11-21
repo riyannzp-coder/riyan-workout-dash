@@ -1,0 +1,4 @@
+# personal training data and exports never go into the public repo
+private/
+*.export.json
+.claude/
