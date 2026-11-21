@@ -863,6 +863,11 @@ $('#c-file').addEventListener('change', async e => {
   try {
     const docs = (JSON.parse(await f.text()).docs || []).filter(d => d && d.path && d.data);
     const r = await SheetStore.importDocs(docs, (n, all) => { msg.textContent = `Mengimpor ${n}/${all}…`; });
+    if (r.failed.length) {
+      const dates = r.failed.flatMap(f => f.paths).map(p => p.split('/')[1]).join(', ');
+      msg.textContent = `Sheet berisi ${r.days ?? '?'} hari. Belum masuk: ${dates}. Alasan: ${r.failed[0].error}. Impor lagi untuk mencoba sisanya.`;
+      return;
+    }
     msg.textContent = `Selesai. Sheet sekarang berisi ${r.days} hari catatan. Memuat ulang…`; setTimeout(() => location.reload(), 1500);
   } catch (err) { msg.textContent = 'Impor gagal: ' + err.message + '. Coba impor lagi; data yang sudah masuk tidak akan dobel.'; }
 });
