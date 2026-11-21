@@ -89,7 +89,7 @@ const fmtN = (n, dp=2) => n == null ? '–' : (Math.round(n*10**dp)/10**dp).toLo
 const metric = k => METRICS.find(m => m.k === k);
 // recommendation engine lives in engine.js; these wrappers hand it the loaded history
 const E = window.WorkoutEngine;
-const { canon, sameEx, isWeighted, kgOf, perfText, hasKg, LADDERS, ladderStep, parseTarget, guessUnit, UNIT_DEF_T } = E;
+const { canon, sameEx, isWeighted, kgOf, perfText, hasKg, LADDERS, ladderStep, parseTarget, rangeTxt, guessUnit, UNIT_DEF_T } = E;
 const lastPerformance = (name, before) => E.lastPerformance(S.days, name, before);
 const lastPerformances = (name, before, n) => E.lastPerformances(S.days, name, before, n);
 const suggest = (e, d, kind) => E.suggest(S.days, e, d, kind);
@@ -228,7 +228,7 @@ const timers = {}, chains = {};
 let pending = 0;
 function setStatus(s, msg) {
   const el = $('#status'); el.dataset.s = s;
-  $('#status-t').textContent = msg || (s === 'saving' ? 'Menyimpan…' : s === 'error' ? 'Gagal menyimpan' : mode === 'local' ? 'Tersimpan di perangkat ini' : 'Tersimpan ke Sheets');
+  $('#status-t').textContent = msg || (s === 'saving' ? 'Menyimpan…' : s === 'error' ? 'Gagal menyimpan' : mode === 'local' ? 'Tersimpan di perangkat' : 'Tersimpan');
 }
 function queueSave(path, getter, delay = 600) {
   clearTimeout(timers[path]); setStatus('saving');
@@ -237,7 +237,7 @@ function queueSave(path, getter, delay = 600) {
     chains[path] = (chains[path] || Promise.resolve())
       .then(() => store.set(path, clone(getter())))
       .then(() => { pending--; if (!pending) setStatus('saved'); })
-      .catch(() => { pending--; setStatus('error', 'Belum terkirim, dicoba lagi otomatis'); });
+      .catch(() => { pending--; setStatus('error', 'Belum terkirim'); });
   }, delay);
 }
 
@@ -417,63 +417,225 @@ function historyHtml() {
     <div class="panel"><div class="panel-head"><div><div class="eyebrow">Riwayat</div><h2>Sesi terakhir</h2></div><button class="btn ghost sm" data-go="hariini">Buka catatan harian</button></div>${log}</div>
   </div>`;
 }
+/* ---------- overview building blocks (presentation only; data comes from S and the engine) ---------- */
+const SKIP_KEY = 'wd-skip';   // recommendations dismissed for one day, kept only on this device
+function skippedMoves(d) { try { return (JSON.parse(localStorage.getItem(SKIP_KEY)) || {})[d] || []; } catch { return []; } }
+function skipMove(d, key) {
+  try { const all = JSON.parse(localStorage.getItem(SKIP_KEY)) || {}; localStorage.setItem(SKIP_KEY, JSON.stringify({ [d]: [...new Set([...(all[d] || []), key])] })); } catch {}
+}
+const filledSets = s => (s && s.ex || []).reduce((a, e) => a + (e.sets || []).filter(v => v > 0).length, 0);
+const totalSets = s => (s && s.ex || []).reduce((a, e) => a + (e.sets || []).length, 0);
+function sessionState(s) {
+  if (!s) return 'none';
+  const f = filledSets(s);
+  if (s.done || (f && f >= totalSets(s))) return 'done';
+  return f ? 'progress' : 'todo';
+}
+// rough planning number: work + rest per set, timed items by their target
+function estMinutes(s, kind) {
+  let sec = 0;
+  (s.ex || []).forEach(e => {
+    const n = (e.sets || []).length || e.s || 1, tg = parseTarget(e.t) || { hi: 10 };
+    if (e.u === 'menit') sec += n * tg.hi * 60;
+    else if (e.u === 'detik') sec += n * (tg.hi * (/\/(sisi|kaki)/.test(e.t) ? 2 : 1) + 45);
+    else sec += n * (kind === 'gym' ? 135 : 75);
+  });
+  return Math.max(5, Math.round(sec / 300) * 5);
+}
+const shortTpl = s => ((S.plan.templates[s.tpl] || {}).name || 'Sesi').replace(/^(Kalistenik|Gym) · /, '');
+const STATE_TXT = { todo: 'Belum mulai', progress: 'Sedang berjalan', done: 'Selesai' };
+
+function todayHtml(t) {
+  const dv = dayView(t);
+  const list = [['gym', dv.gym], ['home', dv.home]].filter(([, s]) => s);
+  if (!list.length) return `<section class="hero rest-day"><div class="hero-top"><span class="eyebrow">Latihan hari ini</span></div>
+    <h2>Hari pemulihan</h2><p class="muted">Tidak ada sesi terjadwal. Jalan santai dan stretching ringan sudah cukup.</p>
+    <button class="btn ghost" data-go="menu">Lihat menu minggu ini</button></section>`;
+  const [kind, s] = list[0], st = sessionState(s), f = filledSets(s), tot = totalSets(s);
+  const cta = st === 'done' ? 'LIHAT RINGKASAN' : st === 'progress' ? 'LANJUTKAN LATIHAN' : 'MULAI LATIHAN';
+  const sub = list[1] ? (() => { const [k2, s2] = list[1], st2 = sessionState(s2);
+    return `<button class="hero-sub" data-go="hariini" data-focus="${k2}"><span class="pill ${k2}">${k2 === 'gym' ? 'Gym' : 'Rumah'}</span>
+      <span class="hs-name">${esc(shortTpl(s2))}</span><span class="state ${st2}">${STATE_TXT[st2]}</span><span aria-hidden="true">›</span></button>`; })() : '';
+  return `<section class="hero ${kind}" aria-labelledby="hero-title">
+    <div class="hero-top"><span class="eyebrow">Latihan hari ini</span><span class="state ${st}">${STATE_TXT[st]}${st === 'progress' ? ` · ${f}/${tot} set` : st === 'done' ? ' ✓' : ''}</span></div>
+    <h2 id="hero-title">${esc(shortTpl(s))}</h2>
+    <div class="hero-meta"><span class="pill ${kind}">${kind === 'gym' ? 'Gym' : 'Kalistenik'}</span><span>${s.ex.length} gerakan</span><span>${tot} set</span><span>±${estMinutes(s, kind)} menit</span></div>
+    <div class="bar ${kind}" role="progressbar" aria-valuemin="0" aria-valuemax="${tot}" aria-valuenow="${f}" aria-label="Set selesai"><i style="width:${tot ? Math.round(f / tot * 100) : 0}%"></i></div>
+    <button class="btn cta" data-go="hariini" data-focus="${kind}">${cta}</button>
+    ${sub}
+  </section>`;
+}
+
+// YOUR NEXT MOVE: only what WorkoutEngine.suggest() returns for today's planned exercises
+function nextMoves(t) {
+  const dv = dayView(t), out = [];
+  [['gym', dv.gym], ['home', dv.home]].forEach(([kind, s]) => (s && s.ex || []).forEach((e, i) => {
+    const sg = suggest(e, t, kind); if (!sg) return;
+    out.push({ kind, i, e, sg, last: lastPerformance(e.n, t), key: kind + ':' + canon(e.n) });
+  }));
+  const rank = { level: 0, up: 1, hold: 2, same: 3 };
+  return out.sort((a, b) => rank[a.sg.kind] - rank[b.sg.kind]);
+}
+function moveApplied(m) {
+  const { e, sg } = m;
+  if (sg.swap) return false;
+  if (sg.t) return e.t === sg.t;
+  if (sg.kg != null) return e.sets.length > 0 && e.sets.every((_, j) => kgOf(e, j) === sg.kg);
+  return false;
+}
+function nextMoveHtml(t) {
+  const all = nextMoves(t); if (!all.length) return '';
+  const skip = skippedMoves(t), moves = all.filter(m => !skip.includes(m.key));
+  const TAG = { level: 'NEXT LEVEL', up: 'READY TO PROGRESS', hold: 'HOLD CURRENT', same: 'HOLD CURRENT' };
+  const card = m => {
+    const { e, sg, last } = m, tg = parseTarget(e.t);
+    const tag = sg.tag === 'Pemulihan' ? 'RECOVERY FIRST' : sg.tag === 'Kurangi bantuan' ? 'LESS ASSISTANCE' : TAG[sg.kind];
+    const prev = last ? `${perfText(last.e)} ${hasKg(last.e) ? 'reps × kg' : e.u} · ${fmtD(last.d)}` : '–';
+    const next = sg.swap ? `${sg.swap.n} · ${e.s} × ${sg.swap.t || e.t}`
+      : sg.t ? `${e.s} × ${sg.t} ${e.u}`
+      : sg.kg != null ? `${fmtN(sg.kg)} kg × ${tg ? rangeTxt(tg) : e.t} × ${e.s} set` : `${e.s} × ${e.t} ${e.u}`;
+    const can = !!(sg.swap || sg.t || sg.kg != null), done = moveApplied(m);
+    const label = sg.swap ? 'Ganti gerakan' : sg.t ? 'Pakai target' : 'Isi beban';
+    return `<article class="move ${sg.kind} ${m.kind}">
+      <div class="move-tag">${tag}<span class="pill ${m.kind}">${m.kind === 'gym' ? 'Gym' : 'Rumah'}</span></div>
+      <h3>${esc(e.n)}</h3>
+      <dl><div><dt>Sebelumnya</dt><dd>${esc(prev)}</dd></div><div><dt>Berikutnya</dt><dd><b>${esc(next)}</b></dd></div></dl>
+      <p class="move-why">${esc(sg.text)}</p>
+      <div class="move-act">${can ? (done ? '<span class="pill ok">Diterapkan ✓</span>' : `<button class="btn sm" data-apply="${m.kind}" data-i="${m.i}">${label}</button>`) : ''}
+        <button class="btn ghost sm" data-skipmove="${esc(m.key)}">Lewati</button></div>
+    </article>`;
+  };
+  const up = moves.filter(m => m.sg.kind === 'up' || m.sg.kind === 'level').length;
+  return `<section class="panel nextmove" aria-labelledby="nm-title">
+    <div class="panel-head"><div><div class="eyebrow">Dari mesin rekomendasi</div><h2 id="nm-title">Your next move</h2></div>
+      <span class="muted nm-count">${up} siap naik · ${moves.length - up} tahan${skip.length ? ` · ${skip.length} dilewati` : ''}</span></div>
+    ${moves.length ? `<div class="moves">${moves.map(card).join('')}</div>` : '<p class="muted">Semua saran hari ini sudah kamu lewati.</p>'}
+  </section>`;
+}
+
+function weekHtml() {
+  const ws = weekStart(new Date()), t = todayIso(), wc = weekCounts(ws), tg = gymTarget();
+  const homeTarget = Object.values(S.plan.week).filter(w => w.home && !w.gym).length || 3;
+  const cells = Array.from({ length: 7 }, (_, i) => {
+    const dt = addDays(ws, i), d = iso(dt), k = dayKinds(d), w = S.plan.week[dt.getDay()] || {};
+    const done = k.g && k.h ? 'db' : k.g ? 'dg' : k.h ? 'dh' : '';
+    const plan = w.gym ? 'pg' : w.home ? 'ph' : 'pr';
+    const title = `${HARI[dt.getDay()]}: ${done ? (done === 'db' ? 'gym + rumah' : done === 'dg' ? 'gym' : 'rumah') + ' selesai' : w.gym ? 'jadwal gym' : w.home ? 'jadwal rumah' : 'pemulihan'}`;
+    return `<li class="${d === t ? 'today' : ''}${d > t ? ' future' : ''}" title="${title}"><span class="dn">${HARI3[dt.getDay()]}</span><i class="wd ${done || plan}">${done ? '✓' : ''}</i></li>`;
+  }).join('');
+  const bar = (label, v, target, kind) => `<div class="prog"><div class="prog-h"><span>${label}</span><b class="num">${v}<small> / ${target}</small></b></div>
+    <div class="bar ${kind}"><i style="width:${Math.min(100, target ? v / target * 100 : 0)}%"></i></div></div>`;
+  return `<section class="panel" aria-labelledby="wk-title">
+    <div class="panel-head"><div><div class="eyebrow">Minggu ini</div><h2 id="wk-title">Target latihan</h2></div>${wc.g >= tg ? '<span class="pill ok">Target gym ✓</span>' : ''}</div>
+    <ol class="wk">${cells}</ol>
+    ${bar('Gym', wc.g, tg, 'gym')}${bar('Kalistenik (hari tanpa gym)', Math.min(wc.h, 7), homeTarget, 'home')}
+    <div class="legend wk-legend"><span><i class="wd dg"></i>Gym</span><span><i class="wd dh"></i>Rumah</span><span><i class="wd pg"></i>Jadwal gym</span><span><i class="wd ph"></i>Jadwal rumah</span></div>
+  </section>`;
+}
+
+function sparkline(pts) {
+  if (pts.length < 2) return '';
+  const ys = pts.map(p => p.y), lo = Math.min(...ys), hi = Math.max(...ys), W = 140, H = 40;
+  const X = i => 2 + i * (W - 4) / (pts.length - 1), Y = v => hi === lo ? H / 2 : 4 + (1 - (v - lo) / (hi - lo)) * (H - 8);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(p.y).toFixed(1)}`).join('');
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${X(pts.length - 1)}" cy="${Y(pts.at(-1).y)}" r="3.5" fill="var(--primary)"/></svg>`;
+}
+function bodyHtml() {
+  const w = series('weight'), cur = w.at(-1), prev = w.at(-2), first = w[0];
+  const wa = series('waist'), wl = wa.at(-1), wp = wa.at(-2), bf = series('bf').at(-1);
+  const dl = (a, b, k, u) => a && b && a !== b ? deltaHtml(k, Math.round((a.y - b.y) * 100) / 100, u) : '–';
+  return `<section class="panel" aria-labelledby="body-title">
+    <div class="panel-head"><div><div class="eyebrow">Tubuh</div><h2 id="body-title">Metrik tubuh</h2></div><button class="btn ghost sm" data-go="ukuran">Riwayat</button></div>
+    <div class="body-main">
+      <div><div class="big num">${cur ? fmtN(cur.y) : '–'}<small>kg</small></div><div class="muted small">${cur ? 'Berat · ' + fmtD(cur.d) : 'Belum ada catatan berat'}</div></div>
+      ${sparkline(w.slice(-14))}
+    </div>
+    <dl class="body-dl">
+      <div><dt>vs sebelumnya</dt><dd>${dl(cur, prev, 'weight', 'kg')}${prev ? ` <small class="muted">(${fmtN(prev.y)} · ${fmtD(prev.d)})</small>` : ''}</dd></div>
+      <div><dt>Sejak awal</dt><dd>${dl(cur, first, 'weight', 'kg')}</dd></div>
+      <div><dt>Pinggang</dt><dd>${wl ? `<b>${fmtN(wl.y)} cm</b> ${wp ? dl(wl, wp, 'waist', 'cm') : ''}` : '<span class="muted">Belum diukur · ukur tiap Senin pagi</span>'}</dd></div>
+      ${bf ? `<div><dt>Lemak tubuh</dt><dd><b>${fmtN(bf.y)}%</b> <small class="muted">${fmtD(bf.d)}</small></dd></div>` : ''}
+    </dl>
+  </section>`;
+}
+
+function bestStreak() {
+  const ds = Object.keys(S.days).filter(d => { const k = dayKinds(d); return k.h || k.g; }).sort();
+  let best = 0, run = 0, prev = null;
+  ds.forEach(d => { run = prev && daysBetween(prev, d) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = d; });
+  return best;
+}
+const displayName = (key, fallback) => { for (const tp of Object.values(S.plan.templates)) { const x = tp.ex.find(x => canon(x.n) === key); if (x) return x.n; } return fallback; };
+function achievementsHtml() {
+  const since = iso(addDays(new Date(), -14)), cards = [];
+  for (const [key, g] of exerciseHistory()) {
+    const r = g.recs; if (r.length < 2 || r.at(-1).d < since) continue;
+    if (r.at(-1).u === 'menit' || /stretch|mobil|cat-cow|hip circle|leg swing|child|jalan|treadmill|pose/.test(key)) continue;   // warm-ups are not records
+    const assisted = /assisted/.test(key);
+    const better = (a, b) => a.w && b.w ? ((assisted ? a.w < b.w : a.w > b.w) || (a.w === b.w && a.r > b.r)) : (!a.w && !b.w ? a.r > b.r : false);
+    const last = r.at(-1), prev = r.slice(0, -1);
+    if (!prev.every(p => better(last, p))) continue;
+    const best = prev.reduce((m, p) => better(p, m) ? p : m, prev[0]);
+    const txt = x => x.w ? `${fmtN(x.w)} kg × ${x.r}` : `${x.r} ${x.u}`;
+    cards.push({ d: last.d, html: `<article class="ach pr"><span class="ach-tag">PR baru · ${fmtD(last.d)}</span><h3>${esc(displayName(key, g.n))}</h3><p><b>${txt(last)}</b> <span class="muted">dari ${txt(best)}</span></p></article>` });
+  }
+  cards.sort((a, b) => a.d < b.d ? 1 : -1);
+  const out = cards.slice(0, 4).map(c => c.html);
+  const cur = streak(), best = bestStreak(), wc = weekCounts(weekStart(new Date())), tg = gymTarget();
+  const sessions = Object.keys(S.days).reduce((a, d) => { const k = dayKinds(d); return a + (k.h ? 1 : 0) + (k.g ? 1 : 0); }, 0);
+  if (cur) out.push(`<article class="ach"><span class="ach-tag">Streak</span><h3>${cur} hari berturut-turut</h3><p class="muted">Rekor: ${best} hari</p></article>`);
+  if (wc.g >= tg) out.push(`<article class="ach"><span class="ach-tag">Minggu ini</span><h3>Target gym ${wc.g}/${tg} tercapai</h3><p class="muted">Sisanya cukup jaga pemulihan.</p></article>`);
+  out.push(`<article class="ach"><span class="ach-tag">Total</span><h3>${sessions} sesi tercatat</h3><p class="muted">Sejak ${S.profile && S.profile.startDate ? fmtD(S.profile.startDate) : 'awal'}</p></article>`);
+  return `<section class="panel" aria-labelledby="ach-title"><div class="panel-head"><div><div class="eyebrow">Progres</div><h2 id="ach-title">Pencapaian</h2></div>
+    <span class="muted small">PR = set terbaik baru dalam 14 hari terakhir</span></div><div class="achs">${out.join('')}</div></section>`;
+}
+
+function consistencyHtml() {
+  const t = todayIso(), start = addDays(weekStart(new Date()), -11 * 7);
+  let s0 = iso(start); if (S.profile && S.profile.startDate && S.profile.startDate > s0) s0 = S.profile.startDate;
+  let days = 0, active = 0;
+  for (let d = parseD(s0); iso(d) <= t; d = addDays(d, 1)) { days++; const k = dayKinds(iso(d)); if (k.h || k.g) active++; }
+  let s4 = 0; for (let i = 0; i < 4; i++) { const c = weekCounts(addDays(weekStart(new Date()), -7 * i)); s4 += c.h + c.g; }
+  const stat = (v, l) => `<div class="cstat"><b class="num">${v}</b><span>${l}</span></div>`;
+  return `<section class="panel" aria-labelledby="cons-title">
+    <div class="panel-head"><div><div class="eyebrow">Konsistensi</div><h2 id="cons-title">12 minggu terakhir</h2></div>
+      <div class="legend"><span><i class="sw" style="background:var(--home)"></i>Rumah</span><span><i class="sw" style="background:var(--gym)"></i>Gym</span><span><i class="sw" style="background:linear-gradient(135deg,var(--home) 50%,var(--gym) 50%)"></i>Keduanya</span><span><i class="sw" style="background:var(--cell)"></i>Kosong</span></div></div>
+    <div class="cstats">${stat(Math.round(active / Math.max(1, days) * 100) + '%', 'hari aktif')}${stat(streak(), 'streak sekarang')}${stat(bestStreak(), 'streak terbaik')}${stat(fmtN(s4 / 4, 1), 'sesi / minggu (4 mg)')}</div>
+    <div class="heat-wrap"><div class="heat-days">${['Sen','Sel','Rab','Kam','Jum','Sab','Min'].map(x => `<span>${x}</span>`).join('')}</div><div class="heat" id="heat"></div></div>
+  </section>`;
+}
+
 function renderOverview() {
   const el = $('#tab-ringkasan');
   if (!S.loaded) { el.innerHTML = `<div class="panel muted">Memuat data latihan…</div>`; return; }
   const p = S.profile, t = todayIso();
-  const ws = weekStart(new Date()), wc = weekCounts(ws);
-  const dayIdx = Math.floor((Date.now() - ws.getTime()) / 864e5) + 1;
-  const kpi = (label, v, unit, d) => `<div class="kpi"><span class="eyebrow">${label}</span><span class="v">${v}${unit ? `<small>${unit}</small>` : ''}</span><span class="d">${d || '&nbsp;'}</span></div>`;
-  const latest = k => { const s = series(k); return s.length ? s.at(-1) : null; };
-  const kv = k => { const l = latest(k), b = p && p.base ? p.base[k] : null; return { v: l ? l.y : null, delta: l && b != null && !l.base ? l.y - b : null }; };
-  const w = kv('weight'), wa = kv('waist');
-  const bmi = w.v && p && p.height ? w.v / ((p.height / 100) ** 2) : null;
-  const tg = gymTarget();
+  const ws = weekStart(new Date());
+  const w = series('weight').at(-1), bmi = w && p && p.height ? w.y / ((p.height / 100) ** 2) : null;
 
   let html = '';
   if (!p || !p.base || p.base.weight == null) {
     html += `<div class="empty-hero"><span class="eyebrow">Langkah pertama</span><h2>Isi ukuran awal kamu</h2>
-      <p>Berat, lingkar pinggang, dada, lengan, dan hasil tes push-up/plank menjadi titik nol. Semua progres di halaman ini dibandingkan dengan angka itu. Karena kamu sudah latihan sekitar sebulan, isi tanggal mulai sesuai hari pertama latihan.</p>
+      <p>Berat, lingkar pinggang, dada, lengan, dan hasil tes push-up/plank menjadi titik nol. Semua progres di halaman ini dibandingkan dengan angka itu.</p>
       <div class="row"><button class="btn" data-go="ukuran">Isi data awal</button><button class="btn ghost" data-go="menu">Lihat menu mingguan</button></div></div>`;
   }
-  html += `<div class="kpis">
-    ${kpi('Hari latihan ke', p && p.startDate ? daysBetween(p.startDate, t) + 1 : '–', '', p && p.startDate ? 'mulai ' + fmtD(p.startDate) : 'tanggal mulai belum diisi')}
-    ${kpi('Berat sekarang', fmtN(w.v), 'kg', w.delta != null ? deltaHtml('weight', w.delta, 'kg') + ' dari awal' : bmi ? '' : 'belum ada catatan')}
-    ${kpi('Pinggang', fmtN(wa.v), 'cm', wa.delta != null ? deltaHtml('waist', wa.delta, 'cm') + ' dari awal' : 'belum ada catatan')}
-    ${kpi('Beruntun aktif', streak(), 'hari', 'hari berturut-turut ada sesi')}
-    <div class="kpi"><span class="eyebrow">Gym minggu ini</span><span class="v">${wc.g}<small>/ ${tg}</small></span><div class="meter"><i style="width:${Math.min(100, wc.g / tg * 100)}%;background:var(--gym)"></i></div></div>
-    <div class="kpi"><span class="eyebrow">Kalistenik minggu ini</span><span class="v">${wc.h}<small>/ ${Math.min(7, dayIdx)}</small></span><div class="meter"><i style="width:${Math.min(100, wc.h / 7 * 100)}%;background:var(--home)"></i></div></div>
-  </div>`;
-
-  // today's menu
-  const dv = dayView(t);
-  const menuBlock = (s, kind) => {
-    if (!s) return `<div class="rest">${kind === 'gym' ? 'Tidak ada jadwal gym hari ini' : 'Istirahat penuh'}</div>`;
-    const tpl = S.plan.templates[s.tpl];
-    return `<div class="session ${kind}" style="border:0"><div class="row" style="margin-bottom:8px"><span class="pill ${kind}">${kind === 'gym' ? 'Gym' : 'Di rumah'}</span><b>${esc(tpl ? tpl.name : 'Sesi')}</b>${sessionActive(s) ? '<span class="pill done">tercatat</span>' : ''}</div>
-      <ul class="menu-list">${s.ex.map(e => `<li><span class="mini">${picto(e.n)}</span><span class="nm">${esc(e.n)}</span><span>${e.s} × ${esc(e.t)} ${e.u}</span></li>`).join('')}</ul></div>`;
-  };
-  html += `<div class="grid g2" style="margin-bottom:16px">
-    <div class="panel"><div class="panel-head"><div><div class="eyebrow">Menu hari ini</div><h2>${fmtDL(t)}</h2></div><button class="btn sm" data-go="hariini">Catat latihan</button></div>
-      <div class="grid">${menuBlock(dv.home, 'home')}${menuBlock(dv.gym, 'gym')}</div></div>
-    <div class="panel"><div class="panel-head"><div><div class="eyebrow">Konsistensi</div><h2>12 minggu terakhir</h2></div>
-      <div class="legend"><span><i class="sw" style="background:var(--home)"></i>Rumah</span><span><i class="sw" style="background:var(--gym)"></i>Gym</span><span><i class="sw" style="background:linear-gradient(135deg,var(--home) 50%,var(--gym) 50%)"></i>Keduanya</span></div></div>
-      <div class="heat-wrap"><div class="heat-days">${['Sen','','Rab','','Jum','','Min'].map(x => `<span>${x}</span>`).join('')}</div><div class="heat" id="heat"></div></div>
-      <div class="tip" style="margin-top:14px">Pola mingguan: gym ${tg}× (Sel, Kam, Sab), kalistenik penuh 3× di hari tanpa gym, Minggu pemulihan. Satu hari terlewat tidak masalah; yang dihitung adalah minggu yang konsisten.</div>
-    </div></div>
-  <div class="grid g2">
-    <div class="panel"><div class="panel-head"><div><div class="eyebrow">Tren</div><h2>Berat badan</h2></div><span class="muted num">${bmi ? 'BMI ' + fmtN(bmi) : ''}</span></div><div class="chart" id="ch-weight"></div></div>
-    <div class="panel"><div class="panel-head"><div><div class="eyebrow">Volume</div><h2>Sesi per minggu</h2></div><div class="legend"><span><i class="sw" style="background:var(--home)"></i>Rumah</span><span><i class="sw" style="background:var(--gym)"></i>Gym</span></div></div><div class="chart" id="ch-weeks"></div></div>
-  </div>`;
+  html += `<div class="ov-top">${todayHtml(t)}${nextMoveHtml(t)}</div>
+    <div class="grid g2 ov-gap">${weekHtml()}${bodyHtml()}</div>
+    <div class="ov-gap">${achievementsHtml()}</div>
+    <div class="ov-gap">${consistencyHtml()}</div>
+    <div class="grid g2 ov-gap">
+      <div class="panel"><div class="panel-head"><div><div class="eyebrow">Tren</div><h2>Berat badan</h2></div><span class="muted num">${bmi ? 'BMI ' + fmtN(bmi) : ''}</span></div><div class="chart" id="ch-weight"></div></div>
+      <div class="panel"><div class="panel-head"><div><div class="eyebrow">Volume</div><h2>Sesi per minggu</h2></div><div class="legend"><span><i class="sw" style="background:var(--home)"></i>Rumah</span><span><i class="sw" style="background:var(--gym)"></i>Gym</span></div></div><div class="chart" id="ch-weeks"></div></div>
+    </div>`;
   html += historyHtml();
   el.innerHTML = html;
 
   // heatmap
-  const start = addDays(weekStart(new Date()), -11 * 7); let cells = '';
+  const start = addDays(ws, -11 * 7); let cells = '';
   for (let i = 0; i < 84; i++) {
     const d = iso(addDays(start, i)), k = dayKinds(d);
     const c = k.h && k.g ? 'b' : k.g ? 'g' : k.h ? 'h' : '';
-    cells += `<i class="${c}${d > t ? ' f' : ''}${d === t ? ' t' : ''}" title="${fmtD(d)}${c ? ' · ' + (c === 'b' ? 'rumah + gym' : c === 'g' ? 'gym' : 'rumah') : ''}"></i>`;
+    cells += `<i class="${c}${d > t ? ' f' : ''}${d === t ? ' t' : ''}" title="${fmtDL(d)}${c ? ' · ' + (c === 'b' ? 'rumah + gym' : c === 'g' ? 'gym' : 'rumah') : ' · tidak ada sesi'}"></i>`;
   }
   $('#heat').innerHTML = cells;
   lineChart($('#ch-weight'), series('weight'), { color: 'var(--primary)', unit: 'kg', target: p && p.targetWeight });
@@ -481,8 +643,27 @@ function renderOverview() {
   for (let i = 7; i >= 0; i--) { const s = addDays(ws, -7 * i); const c = weekCounts(s); weeks.push({ ...c, label: `${s.getDate()} ${BULAN[s.getMonth()]}` }); }
   weeklyBars($('#ch-weeks'), weeks);
 }
+function onOverviewClick(e) {
+  const b = e.target.closest('button'); if (!b) return;
+  const t = todayIso();
+  if (b.dataset.skipmove) { skipMove(t, b.dataset.skipmove); renderOverview(); return; }
+  if (b.dataset.apply) {
+    const kind = b.dataset.apply, i = +b.dataset.i, s = ensureDay(t)[kind]; if (!s || !s.ex[i]) return;
+    const sg = suggest(s.ex[i], t, kind); if (!sg) return;
+    if (sg.swap) applySwap(t, kind, i); else if (sg.t) applyRetarget(t, kind, i, sg.t); else if (sg.kg != null) applyPrefill(t, kind, i, sg.kg);
+    renderOverview();
+  }
+}
 
 /* ---------- HARI INI ---------- */
+function applyPrefill(d, kind, i, w) { const e = ensureDay(d)[kind].ex[i]; e.kgs = e.sets.map((_, j) => kgOf(e, j) ?? w); delete e.kg; saveDay(d); }
+function applyRetarget(d, kind, i, val) { const s = ensureDay(d)[kind], e = s.ex[i]; patchTemplate(s.tpl, e.n, { t: val }); e.t = val; saveDay(d); }
+function applySwap(d, kind, i) {
+  const s = ensureDay(d)[kind], e = s.ex[i], nx = (ladderStep(e.n, kind) || {}).next; if (!nx) return;
+  const u = nx.u || e.u; patchTemplate(s.tpl, e.n, { n: nx.n, t: nx.t, u });
+  s.ex[i] = { n: nx.n, s: e.s, t: nx.t, u, sets: e.sets.map(() => null), kgs: e.sets.map(() => null) };
+  saveDay(d);
+}
 function sessionCard(kind, s, d) {
   const opts = tplList(kind).map(([k, t]) => `<option value="${k}" ${s && s.tpl === k ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
   const label = kind === 'gym' ? 'Gym' : 'Kalistenik di rumah';
@@ -495,7 +676,7 @@ function sessionCard(kind, s, d) {
     const sets = e.sets.map((v, j) => { const w = kgOf(e, j);
       const defR = last && last.e.sets[j] > 0 ? last.e.sets[j] : tg ? tg.hi : null;
       const defW = sg && sg.kg ? sg.kg : last ? kgOf(last.e, j) || kgOf(last.e, 0) : null;
-      return `<label class="set ${v > 0 ? 'filled' : ''}"><span>S${j + 1}</span><input id="t-${kind}-${i}-${j}" type="number" inputmode="decimal" min="0" step="1" data-k="${kind}" data-i="${i}" data-j="${j}" value="${v ?? ''}" aria-label="${esc(e.n)} set ${j + 1} (${e.u})"${pkAttr(UNIT_PK[e.u] || UNIT_PK.reps, `${e.n} · set ${j + 1}`, e.u, defR)}>${withKg ? `<span>×</span><input class="w" id="t-${kind}-${i}-${j}-kg" type="number" inputmode="decimal" min="0" step="0.1" data-k="${kind}" data-i="${i}" data-kgj="${j}" value="${w ?? ''}" placeholder="kg" aria-label="${esc(e.n)} set ${j + 1} beban kg"${pkAttr(KG_PK, `${e.n} · beban set ${j + 1}`, 'kg', defW)}><span>kg</span>` : ''}</label>`; }).join('');
+      return `<div class="set ${v > 0 ? 'filled' : ''}"><span class="sn">S${j + 1}</span><input id="t-${kind}-${i}-${j}" type="number" inputmode="decimal" min="0" step="1" data-k="${kind}" data-i="${i}" data-j="${j}" value="${v ?? ''}" aria-label="${esc(e.n)} set ${j + 1} (${e.u})"${pkAttr(UNIT_PK[e.u] || UNIT_PK.reps, `${e.n} · set ${j + 1}`, e.u, defR)}>${withKg ? `<span>×</span><input class="w" id="t-${kind}-${i}-${j}-kg" type="number" inputmode="decimal" min="0" step="0.1" data-k="${kind}" data-i="${i}" data-kgj="${j}" value="${w ?? ''}" placeholder="kg" aria-label="${esc(e.n)} set ${j + 1} beban kg"${pkAttr(KG_PK, `${e.n} · beban set ${j + 1}`, 'kg', defW)}><span>kg</span>` : `<span class="u">${e.u}</span>`}<button class="set-ok" data-quick="${kind}" data-i="${i}" data-j="${j}" aria-pressed="${v > 0}" aria-label="Set ${j + 1} ${v > 0 ? 'selesai, ketuk untuk batal' : 'tandai selesai'}">✓</button></div>`; }).join('');
     const add = `<button class="icon-btn" data-addset="${kind}" data-i="${i}" aria-label="Tambah set ${esc(e.n)}" title="Tambah set">+</button>`;
     const uopts = (kind === 'gym' ? [['reps|1', 'reps × kg'], ['reps|0', 'reps saja']] : [['reps|0', 'reps']]).concat([['detik|0', 'detik'], ['menit|0', 'menit']]);
     const ucur = `${e.u}|${withKg ? 1 : 0}`;
@@ -504,7 +685,9 @@ function sessionCard(kind, s, d) {
         ${pool.length > 1 ? `<select id="t-${kind}-${i}-var" data-variant="${kind}" data-i="${i}" aria-label="Variasi ${esc(e.n)}">${pool.map(n => `<option ${n === e.n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}
         <select id="t-${kind}-${i}-unit" data-unit="${kind}" data-i="${i}" aria-label="Satuan ${esc(e.n)}">${uopts.map(([v, l]) => `<option value="${v}" ${v === ucur ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <button class="icon-btn" data-rmex="${kind}" data-i="${i}" aria-label="Lewati ${esc(e.n)} hari ini" title="Lewati hari ini">×</button></div>`;
-    return `<div class="ex"><span class="pic">${picto(e.n)}</span><div class="ex-body"><div class="ex-head"><span class="ex-name">${esc(e.n)}</span><span class="ex-target">${e.s} × ${esc(e.t)} ${withKg ? 'reps · kg' : e.u}</span></div>
+    const nDone = e.sets.filter(v => v > 0).length, allDone = nDone > 0 && nDone === e.sets.length;
+    return `<div class="ex${allDone ? ' ex-done' : ''}"><span class="pic">${picto(e.n)}</span><div class="ex-body"><div class="ex-head"><span class="ex-name">${allDone ? '<span class="ok-dot" aria-hidden="true">✓</span>' : ''}${esc(e.n)}</span><span class="ex-target">${e.s} × ${esc(e.t)} ${withKg ? 'reps · kg' : e.u}</span></div>
+      <div class="ex-prog"><span class="num">${nDone}/${e.sets.length} set</span></div>
       ${tools}
       <div class="ex-sets">${sets}${add}</div>
       <div class="ex-last">${last ? `Terakhir ${fmtD(last.d)}: <b>${perfText(last.e)}</b> ${hasKg(last.e) ? 'reps × kg' : e.u}` : 'Belum ada catatan sebelumnya'}</div>
@@ -514,7 +697,10 @@ function sessionCard(kind, s, d) {
       <label class="chk"><input type="checkbox" id="t-${kind}-newex-save" checked> simpan juga ke menu</label></div>`;
   const foot = s ? `<div class="session-foot"><label class="field"><span>Durasi (menit)</span><input id="t-${kind}-min" type="number" inputmode="numeric" min="0" data-k="${kind}" data-min="1" value="${s.min ?? ''}"${pkAttr([0, 180, 1], 'Durasi sesi', 'menit', 45)}></label>
       <button class="btn ghost toggle-done" data-done="${kind}" aria-pressed="${!!s.done}">${s.done ? 'Selesai ✓' : 'Tandai selesai'}</button></div>` : '';
-  return `<div class="panel session ${kind}"><div class="panel-head"><div><div class="kind">${label}</div><h2>${s && S.plan.templates[s.tpl] ? esc(S.plan.templates[s.tpl].name) : 'Tidak ada sesi'}</h2></div></div>
+  const sp = s ? `<div class="sess-prog"><div class="bar ${kind}"><i style="width:${totalSets(s) ? Math.round(filledSets(s) / totalSets(s) * 100) : 0}%"></i></div>
+      <span class="num">${filledSets(s)}/${totalSets(s)} set · ±${estMinutes(s, kind)} menit</span></div>` : '';
+  return `<div class="panel session ${kind}"><div class="panel-head"><div><div class="kind">${label}</div><h2>${s && S.plan.templates[s.tpl] ? esc(S.plan.templates[s.tpl].name) : 'Tidak ada sesi'}</h2></div>${s ? `<span class="state ${sessionState(s)}">${STATE_TXT[sessionState(s)]}</span>` : ''}</div>
+    ${sp}
     <div class="session-tools"><select id="t-${kind}-tpl" data-tpl="${kind}" aria-label="Ganti menu ${label}"><option value="">${kind === 'gym' ? 'Tidak ke gym' : 'Istirahat'}</option>${opts}</select></div>
     ${body}${foot}</div>`;
 }
@@ -587,14 +773,20 @@ function onTodayClick(e) {
   if (b.dataset.addset) { const e = ensureDay(S.date)[b.dataset.addset].ex[+b.dataset.i];
     e.kgs = e.kgs || e.sets.map((_, j) => kgOf(e, j)); delete e.kg;
     e.sets.push(null); e.kgs.push(e.kgs.length ? e.kgs[e.kgs.length - 1] : null); saveDay(S.date); renderToday(); return; }
-  if (b.dataset.prefill) { const e = ensureDay(S.date)[b.dataset.prefill].ex[+b.dataset.i], w = +b.dataset.kg;
-    e.kgs = e.sets.map((_, j) => kgOf(e, j) ?? w); delete e.kg; saveDay(S.date); renderToday(); return; }
-  if (b.dataset.retarget) { const s = ensureDay(S.date)[b.dataset.retarget], e = s.ex[+b.dataset.i];
-    patchTemplate(s.tpl, e.n, { t: b.dataset.val }); e.t = b.dataset.val; saveDay(S.date); renderToday(); return; }
-  if (b.dataset.swap) { const s = ensureDay(S.date)[b.dataset.swap], i = +b.dataset.i, e = s.ex[i];
-    const nx = (ladderStep(e.n, b.dataset.swap) || {}).next; if (!nx) return;
-    const u = nx.u || e.u; patchTemplate(s.tpl, e.n, { n: nx.n, t: nx.t, u });
-    s.ex[i] = { n: nx.n, s: e.s, t: nx.t, u, sets: e.sets.map(() => null), kgs: e.sets.map(() => null) };
+  if (b.dataset.prefill) { applyPrefill(S.date, b.dataset.prefill, +b.dataset.i, +b.dataset.kg); renderToday(); return; }
+  if (b.dataset.retarget) { applyRetarget(S.date, b.dataset.retarget, +b.dataset.i, b.dataset.val); renderToday(); return; }
+  if (b.dataset.swap) { applySwap(S.date, b.dataset.swap, +b.dataset.i); renderToday(); return; }
+  if (b.dataset.quick) {
+    // one tap marks a set done with the most likely numbers; a second tap clears the reps
+    const kind = b.dataset.quick, i = +b.dataset.i, j = +b.dataset.j, e = ensureDay(S.date)[kind].ex[i];
+    e.kgs = e.kgs || e.sets.map((_, k) => kgOf(e, k)); delete e.kg;
+    if (e.sets[j] > 0) e.sets[j] = null;
+    else {
+      const last = lastPerformance(e.n, S.date), tg = parseTarget(e.t), sg = suggest(e, S.date, kind);
+      e.sets[j] = (j > 0 && e.sets[j - 1] > 0 ? e.sets[j - 1] : null) ?? (last && last.e.sets[j] > 0 ? last.e.sets[j] : null) ?? (tg ? tg.hi : 10);
+      if (isWeighted(e, kind) && e.kgs[j] == null)
+        e.kgs[j] = (j > 0 ? e.kgs[j - 1] : null) ?? (sg && sg.kg != null ? sg.kg : null) ?? (last ? kgOf(last.e, j) ?? kgOf(last.e, 0) : null);
+    }
     saveDay(S.date); renderToday(); return; }
   if (b.dataset.addex) { const kind = b.dataset.addex, inp = $('#t-' + kind + '-newex'), n = inp.value.trim(); if (!n) { inp.focus(); return; }
     const s = ensureDay(S.date)[kind]; if (!s) return;
@@ -730,8 +922,11 @@ function onMeasureInput(e) {
 /* ---------- shell ---------- */
 function updateHeader() {
   const p = S.profile;
+  const h = new Date().getHours(), part = h < 11 ? 'pagi' : h < 15 ? 'siang' : h < 18 ? 'sore' : 'malam';
+  $('#hdr-eyebrow').textContent = `Selamat ${part}${p && p.name ? ', ' + p.name : ''}`;
   $('#hdr-title').textContent = p && p.name ? `${p.name} Workout Dash` : 'Workout Dash';
-  $('#hdr-sub').textContent = !S.loaded ? 'Memuat data…' : p && p.startDate ? `Hari ke-${daysBetween(p.startDate, todayIso()) + 1} sejak mulai · ${fmtDL(todayIso())}` : fmtDL(todayIso());
+  const t = todayIso(), dt = parseD(t);
+  $('#hdr-sub').textContent = !S.loaded ? 'Memuat data…' : `${HARI3[dt.getDay()]}, ${fmtD(t)}${p && p.startDate ? ` · Hari ke-${daysBetween(p.startDate, t) + 1}` : ''}`;
 }
 const RENDER = { ringkasan: renderOverview, hariini: renderToday, menu: renderPlan, ukuran: renderMeasure };
 function show(tab) {
@@ -743,7 +938,13 @@ function show(tab) {
   try { history.replaceState(null, '', '#' + tab); } catch {}
 }
 document.querySelector('nav.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) show(b.dataset.tab); });
-document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) { show(g.dataset.go); window.scrollTo({ top: 0 }); } });
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (!g) return;
+  show(g.dataset.go); window.scrollTo({ top: 0 });
+  const f = g.dataset.focus && document.querySelector('#tab-hariini .session.' + g.dataset.focus);
+  if (f && S.date === todayIso()) f.scrollIntoView({ block: 'start' });
+});
+$('#tab-ringkasan').addEventListener('click', onOverviewClick);
 const tToday = $('#tab-hariini'); tToday.addEventListener('input', onTodayInput); tToday.addEventListener('change', onTodayInput); tToday.addEventListener('click', onTodayClick);
 const tPlan = $('#tab-menu'); tPlan.addEventListener('input', onPlanInput); tPlan.addEventListener('change', e => { if (e.target.dataset.week !== undefined) onPlanInput(e); }); tPlan.addEventListener('click', onPlanClick);
 const tMeas = $('#tab-ukuran'); tMeas.addEventListener('input', onMeasureInput); tMeas.addEventListener('change', e => { if (e.target.dataset.p === 'goal' || e.target.dataset.p === 'startDate') { onMeasureInput(e); } });
@@ -873,8 +1074,8 @@ $('#c-file').addEventListener('change', async e => {
   } catch (err) { msg.textContent = 'Impor gagal: ' + err.message + '. Coba impor lagi; data yang sudah masuk tidak akan dobel.'; }
 });
 SheetStore.on((state, d) => {
-  if (state === 'synced') setStatus('saved', 'Tersinkron dengan Sheets');
-  if (state === 'pending') setStatus('error', `${d.count} perubahan menunggu dikirim`);
+  if (state === 'synced') setStatus('saved', 'Tersinkron');
+  if (state === 'pending') setStatus('error', `${d.count} belum terkirim`);
 });
 
 const initial = (location.hash || '').slice(1);
@@ -893,7 +1094,8 @@ show(RENDER[initial] ? initial : 'ringkasan');
   S.loaded = true;
   $('#local-warn').hidden = mode !== 'local';
   $('#offline-warn').hidden = mode !== 'cache';
-  if ($('#status').dataset.s !== 'error') setStatus('saved', mode === 'sheets' ? 'Tersinkron dengan Sheets' : mode === 'cache' ? 'Offline · data lokal' : 'Tersimpan di perangkat ini');
+  if ($('#status').dataset.s !== 'error') setStatus('saved', mode === 'sheets' ? 'Tersinkron' : mode === 'cache' ? 'Offline' : 'Hanya di perangkat');
   updateHeader(); RENDER[S.tab]();
 })();
+updateHeader();
 })();
