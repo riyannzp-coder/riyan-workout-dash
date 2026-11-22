@@ -238,6 +238,10 @@ const PICTO = {
   stand:    () => floor() + figure({ ...STAND, a1: [[64, 36], [66, 50]] }),
 };
 const PICTO_RULES = [
+  ['cablerow', /rowing|rower/], ['pushdown', /skierg|ski erg/], ['chest', /scapula|lower trap|serratus|wall slide|pull-apart|pull apart|book opener|pass-through|pass through/],
+  ['mtsrow', /kelso|shrug/], ['goblet', /thruster|wall ball|wall throw|medicine ball/], ['pushfull', /burpee/], ['walk', /carry/],
+  ['hipcircle', /hip cars|cars|airplane/], ['legswing', /march/], ['shpress', /halo|vipr|overhead press/],
+  ['bridge', /glute machine|kickback|hip extension/], ['lunge', /step-down|step down/],
   ['legpress', /leg press|hack squat/], ['legext', /leg extension/], ['legcurl', /leg curl/],
   ['curlm', /curl machine|machine curl|preacher/], ['assist', /assisted|chin-up|chin up|pull-up|pullup|\bdip\b/],
   ['incpress', /incline.*press/], ['chestpress', /chest press|bench press/], ['pecfly', /\bfly\b|pec deck|pectoral/],
@@ -306,7 +310,7 @@ function buildSession(tplKey, prev) {
     ex: t.ex.map(e => { const k = keep[e.n]; const n = Math.max(e.s, k && k.sets ? k.sets.length : 0);
       const sets = Array.from({length: n}, (_, i) => k && k.sets ? k.sets[i] ?? null : null);
       const kgs = Array.from({length: n}, (_, i) => k ? kgOf(k, i) : null);
-      return { n: e.n, s: e.s, t: e.t, u: e.u, w: e.w, alt: e.alt, sets, kgs }; }) };
+      return { n: e.n, s: e.s, t: e.t, u: e.u, w: e.w, alt: e.alt, kg0: e.kg0, sets, kgs }; }) };
 }
 function dayView(d) {
   // existing log, or a fresh one built from the weekly plan (not saved until edited)
@@ -737,7 +741,7 @@ function sessionCard(kind, s, d) {
     const sg = suggest(e, d, kind), tg = parseTarget(e.t);
     const sets = e.sets.map((v, j) => { const w = kgOf(e, j);
       const defR = last && last.e.sets[j] > 0 ? last.e.sets[j] : tg ? tg.hi : null;
-      const defW = sg && sg.kg ? sg.kg : last ? kgOf(last.e, j) || kgOf(last.e, 0) : null;
+      const defW = sg && sg.kg ? sg.kg : last ? kgOf(last.e, j) || kgOf(last.e, 0) : (e.kg0 ?? null);
       return `<div class="set ${v > 0 ? 'filled' : ''}"><span class="sn">S${j + 1}</span><input id="t-${kind}-${i}-${j}" type="number" inputmode="decimal" min="0" step="1" data-k="${kind}" data-i="${i}" data-j="${j}" value="${v ?? ''}" aria-label="${esc(e.n)} set ${j + 1} (${e.u})"${pkAttr(UNIT_PK[e.u] || UNIT_PK.reps, `${e.n} · set ${j + 1}`, e.u, defR)}>${withKg ? `<span>×</span><input class="w" id="t-${kind}-${i}-${j}-kg" type="number" inputmode="decimal" min="0" step="0.1" data-k="${kind}" data-i="${i}" data-kgj="${j}" value="${w ?? ''}" placeholder="kg" aria-label="${esc(e.n)} set ${j + 1} beban kg"${pkAttr(KG_PK, `${e.n} · beban set ${j + 1}`, 'kg', defW)}><span>kg</span>` : `<span class="u">${e.u}</span>`}<button class="set-ok" data-quick="${kind}" data-i="${i}" data-j="${j}" aria-pressed="${v > 0}" aria-label="Set ${j + 1} ${v > 0 ? 'selesai, ketuk untuk batal' : 'tandai selesai'}">✓</button></div>`; }).join('');
     const add = `<button class="icon-btn" data-addset="${kind}" data-i="${i}" aria-label="Tambah set ${esc(e.n)}" title="Tambah set">+</button>`;
     const uopts = (kind === 'gym' ? [['reps|1', 'reps × kg'], ['reps|0', 'reps saja']] : [['reps|0', 'reps']]).concat([['detik|0', 'detik'], ['menit|0', 'menit']]);
@@ -795,7 +799,7 @@ function renderToday() {
           <div class="field"><span>Energi (1 = lemas, 5 = prima)</span><div class="seg" role="group" aria-label="Energi">${[1,2,3,4,5].map(n => `<button data-energy="${n}" aria-pressed="${v.energy === n}">${n}</button>`).join('')}</div></div>
           <label class="field" style="max-width:160px"><span>Tidur (jam)</span><input id="t-sleep" type="number" inputmode="decimal" step="0.5" min="0" max="24" data-sleep="1" value="${v.sleep ?? ''}"${pkAttr([0, 14, 0.5], 'Tidur', 'jam', 7)}></label>
           <label class="field"><span>Catatan</span><textarea id="t-note" data-note="1" placeholder="Contoh: bahu kanan agak pegal, pull-up masih pakai band hijau">${esc(v.note || '')}</textarea></label>
-          ${presetOf().notes ? `<div class="tip safety">${esc(presetOf().notes)}</div>` : ''}
+          ${(S.plan.notes || presetOf().notes) ? `<div class="tip safety">${esc(S.plan.notes || presetOf().notes)}</div>` : ''}
           <div class="tip"><b>Aturan progresi.</b> Mudah dan teknik bagus: tambah 1–2 reps atau pakai variasi lebih sulit (knee → incline → negative → full push-up; squat → pause → split → Bulgarian split squat). Sedang: pertahankan. Berat atau teknik turun: kurangi reps atau set. Nyeri tajam atau nyeri sendi: hentikan gerakannya. Target RPE sekitar 7/10. Untuk gym, naikkan beban 2,5–5% setelah semua set mencapai batas atas target.</div>
         </div></div>
     </div>`;
@@ -816,7 +820,7 @@ function onTodayInput(e) {
     const s = ensureDay(d)[x.dataset.variant], i = +x.dataset.i, it = s.ex[i], pick = x.value;
     const pool = [it.n, ...(it.alt || [])];
     const known = Object.values(S.plan.templates).flatMap(t => t.ex).find(y => sameEx(y.n, pick));
-    s.ex[i] = { n: pick, s: it.s, t: known ? known.t : it.t, u: known ? known.u : it.u, w: known ? known.w : undefined,
+    s.ex[i] = { n: pick, s: it.s, t: known ? known.t : it.t, u: known ? known.u : it.u, w: known ? known.w : undefined, kg0: known ? known.kg0 : undefined,
       alt: pool.filter(n => n !== pick), sets: it.sets.map(() => null), kgs: it.sets.map(() => null) };
     saveDay(d); renderToday(); return; }
   if (x.dataset.k) {
@@ -850,7 +854,7 @@ function onTodayClick(e) {
       const last = lastPerformance(e.n, S.date), tg = parseTarget(e.t), sg = suggest(e, S.date, kind);
       e.sets[j] = (j > 0 && e.sets[j - 1] > 0 ? e.sets[j - 1] : null) ?? (last && last.e.sets[j] > 0 ? last.e.sets[j] : null) ?? (tg ? tg.hi : 10);
       if (isWeighted(e, kind) && e.kgs[j] == null)
-        e.kgs[j] = (j > 0 ? e.kgs[j - 1] : null) ?? (sg && sg.kg != null ? sg.kg : null) ?? (last ? kgOf(last.e, j) ?? kgOf(last.e, 0) : null);
+        e.kgs[j] = (j > 0 ? e.kgs[j - 1] : null) ?? (sg && sg.kg != null ? sg.kg : null) ?? (last ? kgOf(last.e, j) ?? kgOf(last.e, 0) : null) ?? (e.kg0 ?? null);
     }
     saveDay(S.date); renderToday(); return; }
   if (b.dataset.addex) { const kind = b.dataset.addex, inp = $('#t-' + kind + '-newex'), n = inp.value.trim(); if (!n) { inp.focus(); return; }
