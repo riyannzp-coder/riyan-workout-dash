@@ -72,6 +72,49 @@ const DEFAULT_PLAN = () => ({
   },
 });
 
+// Gym 3x full body, back- and shoulder-friendly:
+// supported machines, no heavy spinal loading, no loaded spinal flexion/rotation, nothing overhead,
+// anti-movement core, upper-back and rotator-cuff work for posture, low-impact cardio for stamina.
+const GYM3_PLAN = () => ({
+  templates: {
+    g_a: { name: 'Gym · Full Body A', kind: 'gym', ex: [
+      ex('Treadmill incline walk (pemanasan)', 1, '8', 'menit'), ex('Leg Press Machine (45°)', 3, '12-15'),
+      ex('Seated Cable Row (neutral grip)', 3, '12-15', 'reps', ['Chest-Supported Row Machine']), ex('Hip Thrust Machine', 3, '12', 'reps', ['Glute Bridge (tahan 2 dtk di atas)']),
+      ex('Flat Machine Chest Press (neutral grip)', 2, '12-15'), ex('Face Pull (cable)', 2, '15'),
+      ex('Dead Bug', 2, '8/sisi'), ex('Bent-Knee Side Plank', 2, '20-30/sisi', 'detik'), ex('Stationary Bike', 1, '10-15', 'menit', ['Elliptical'])] },
+    g_b: { name: 'Gym · Full Body B', kind: 'gym', ex: [
+      ex('Stationary Bike (pemanasan)', 1, '8', 'menit'), { ...ex('Goblet Box Squat (duduk ke bangku)', 3, '10-12'), w: true },
+      ex('Lat Pulldown (neutral grip, ke dada)', 3, '12', 'reps', ['Assisted Dip/Chin (mesin)']), ex('Seated Leg Curl', 3, '12-15'),
+      ex('Cable External Rotation', 2, '12-15/sisi'), ex('Hip Abduction Machine', 2, '15'),
+      ex('Bird Dog', 2, '8/sisi'), ex('Standing Cable Pallof Press', 2, '10/sisi'), ex('Treadmill incline walk', 1, '15', 'menit', ['Elliptical'])] },
+    g_c: { name: 'Gym · Full Body C', kind: 'gym', ex: [
+      ex('Elliptical (pemanasan)', 1, '8', 'menit'), ex('Leg Extension Machine', 3, '12-15'),
+      ex('Chest-Supported Row Machine', 3, '12', 'reps', ['Seated Cable Row (neutral grip)']), ex('Step-up (bangku rendah)', 2, '10/kaki'),
+      ex('Glute Bridge (tahan 2 dtk di atas)', 2, '15'), ex('Cable Triceps Pushdown', 2, '12'), ex('Standing Dumbbell Biceps Curl', 2, '12'),
+      ex('Forearm Plank', 2, '20-30', 'detik'), ex('Stationary Bike (interval ringan)', 1, '12', 'menit', ['Treadmill incline walk'])] },
+    h_mob: { name: 'Mobilitas punggung & bahu (opsional)', kind: 'home', ex: [
+      ex('Cat-Cow', 1, '10'), ex("Child's Pose", 1, '45', 'detik'), ex('Bird Dog', 2, '8/sisi'),
+      ex('Hip Flexor Stretch', 1, '30/sisi', 'detik'), ex('Jalan santai', 1, '20-30', 'menit')] },
+  },
+  week: {
+    0: { home: null, gym: null }, 1: { home: null, gym: 'g_a' }, 2: { home: null, gym: null }, 3: { home: null, gym: 'g_b' },
+    4: { home: null, gym: null }, 5: { home: null, gym: 'g_c' }, 6: { home: null, gym: null },
+  },
+});
+const PRESETS = {
+  riyan: { label: 'Rumah + gym (kalistenik harian, gym 3×)', plan: DEFAULT_PLAN },
+  gym3: { label: 'Gym 3× full body · ramah punggung & bahu', plan: GYM3_PLAN,
+    notes: 'Catatan keamanan: jaga punggung bawah tetap netral (tidak membungkuk saat mengangkat), tanpa beban di atas kepala, naikkan beban pelan-pelan. Hentikan gerakan kalau muncul nyeri tajam, kesemutan, atau nyeri menjalar ke kaki atau lengan.' },
+};
+const THEMES = { navy: 'Navy & oranye', plum: 'Plum & coral' };
+const THEME_COLOR = { navy: '#13284A', plum: '#4A2545' };
+function applyTheme() {
+  const th = (S.profile && S.profile.theme) || 'navy';
+  document.documentElement.dataset.color = th;
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = THEME_COLOR[th] || THEME_COLOR.navy;
+}
+const presetOf = () => PRESETS[(S.profile && S.profile.program) || 'riyan'] || PRESETS.riyan;
+
 /* ---------- helpers ---------- */
 const $ = (s, r=document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -189,6 +232,9 @@ const PICTO = {
   crunchm:  () => chair(32) + rc(56, 24, 16, 6) + figure({ h: [62, 30], n: [56, 36], hp: [44, 60], a1: [[62, 42], [60, 32]], l1: [[64, 60], [66, G]] }) + arrow(82, 28, 74, 46),
   legraise: () => mat() + `<path d="M40,84 A16,9 0 0 1 72,84 Z" fill="var(--eq)"/>` + figure({ h: [18, 76], n: [26, 77], hp: [54, 74], a1: [[36, 82], [48, 82]], l1: [[60, 56], [64, 36]], l2: [[66, 58], [74, 42]] }) + arrow(94, 76, 80, 46),
   curlm:    () => chair(34, false) + ln(60, 40, 74, 52, 6) + ln(70, 52, 70, G, 4) + figure({ h: [46, 24], n: [48, 32], hp: [46, 60], a1: [[66, 46], [64, 30]], l1: [[64, 60], [66, G]] }) + arrow(82, 46, 76, 30),
+  abduct:   () => chair(36) + figure({ h: [44, 26], n: [44, 34], hp: [46, 60], a1: [[50, 48], [58, 60]], l1: [[66, 60], [66, G]] }) + rc(60, 54, 10, 12) + arrow(74, 58, 90, 50),
+  bike:     () => floor() + `<circle cx="34" cy="70" r="13" fill="none" stroke="var(--eq)" stroke-width="3"/>` + ln(34, 70, 70, 74, 4) + ln(56, 54, 64, 74, 4) + rc(50, 50, 16, 5) + ln(84, 40, 76, 74, 4) + ln(80, 40, 92, 40, 4)
+              + figure({ h: [72, 20], n: [68, 28], hp: [56, 50], a1: [[78, 34], [86, 40]], l1: [[66, 62], [60, 76]], l2: [[54, 66], [58, 78]] }),
   stand:    () => floor() + figure({ ...STAND, a1: [[64, 36], [66, 50]] }),
 };
 const PICTO_RULES = [
@@ -197,17 +243,17 @@ const PICTO_RULES = [
   ['incpress', /incline.*press/], ['chestpress', /chest press|bench press/], ['pecfly', /\bfly\b|pec deck|pectoral/],
   ['dbpress', /(dumbbell|db) shoulder press|arnold press/], ['shpress', /shoulder press/],
   ['mtsrow', /mts row|chest[- ]supported row|t-bar/], ['pulldown', /pulldown|pull-down/], ['pushdown', /pushdown|push down/],
-  ['pallof', /pallof/], ['rotation', /torso rotation|rotary|russian twist/], ['crunchm', /crunch|abdominal/], ['cablerow', /\brow\b/],
-  ['legraise', /leg raise|knee raise/], ['hang', /dead hang|\bhang\b/], ['curl', /curl/], ['rdl', /romanian|rdl|deadlift/],
+  ['pallof', /pallof|face pull|external rotation/], ['rotation', /torso rotation|rotary|russian twist/], ['crunchm', /crunch|abdominal/], ['cablerow', /\brow\b/],
+  ['abduct', /abduction|adduction/], ['legraise', /leg raise|knee raise/], ['hang', /dead hang|\bhang\b/], ['curl', /curl/], ['rdl', /romanian|rdl|deadlift/],
   ['calf', /standing calf|calf.*(db|dumbbell)/], ['calfbw', /calf/],
   ['sideplank', /bent-knee side plank|bent knee side plank/], ['sidefull', /side plank/],
   ['shtap', /shoulder tap/], ['plank', /plank/],
   ['decline', /decline push/], ['incpush', /incline push/], ['pushup', /knee push/], ['pushfull', /push-up|push up|pushup/],
   ['deadbug', /dead bug/], ['hollow', /hollow/], ['birddog', /bird dog/],
-  ['bridge', /glute bridge|hip thrust/], ['lunge', /lunge|split squat/], ['goblet', /goblet/], ['squatdb', /dumbbell squat|db squat/],
+  ['bridge', /glute bridge|hip thrust/], ['lunge', /lunge|split squat|step-up|step up/], ['goblet', /goblet/], ['squatdb', /dumbbell squat|db squat/],
   ['squat', /squat|wall sit/], ['catcow', /cat-cow|cat cow/], ['child', /child/], ['hipcircle', /hip circle|mobility|mobilitas/],
   ['legswing', /leg swing/], ['hamstring', /hamstring/], ['quad', /quad/], ['chest', /chest stretch|stretch/],
-  ['treadmill', /treadmill|tredmill|\brun\b|lari/], ['walk', /jalan|walk/],
+  ['treadmill', /treadmill|tredmill|\brun\b|lari|elliptical/], ['bike', /bike|sepeda/], ['walk', /jalan|walk/],
 ];
 const pictoCache = {};
 function picto(name) {
@@ -619,6 +665,15 @@ function renderOverview() {
       <p>Berat, lingkar pinggang, dada, lengan, dan hasil tes push-up/plank menjadi titik nol. Semua progres di halaman ini dibandingkan dengan angka itu.</p>
       <div class="row"><button class="btn" data-go="ukuran">Isi data awal</button><button class="btn ghost" data-go="menu">Lihat menu mingguan</button></div></div>`;
   }
+  if (!S.planFromSheet) {
+    html = `<section class="panel onboard" aria-labelledby="ob-title"><div class="eyebrow">Dashboard baru</div><h2 id="ob-title">Atur dashboard ini</h2>
+      <p class="muted">Sheet ini belum punya menu. Pilih program dasar dan warna, nanti semuanya bisa diubah di tab Menu mingguan dan Ukuran tubuh.</p>
+      <label class="field"><span>Nama panggilan</span><input id="ob-name" value="${esc((p && p.name) || '')}" placeholder="Nama yang tampil di judul"></label>
+      <div class="field"><span>Program dasar</span><div class="ob-opts">${Object.entries(PRESETS).map(([k, v], i) => `<label class="ob-opt"><input type="radio" name="ob-prog" value="${k}" ${i === 0 ? 'checked' : ''}><span>${esc(v.label)}</span></label>`).join('')}</div></div>
+      <div class="field"><span>Warna</span><div class="ob-opts">${Object.entries(THEMES).map(([k, l], i) => `<label class="ob-opt"><input type="radio" name="ob-theme" value="${k}" ${i === 0 ? 'checked' : ''}><span><i class="sw ob-sw-${k}"></i>${l}</span></label>`).join('')}</div></div>
+      <button class="btn cta" id="ob-save">Simpan & mulai</button></section>` + html;
+    el.innerHTML = html; return;
+  }
   html += `<div class="ov-top">${todayHtml(t)}${nextMoveHtml(t)}</div>
     <div class="grid g2 ov-gap">${weekHtml()}${bodyHtml()}</div>
     <div class="ov-gap">${achievementsHtml()}</div>
@@ -645,6 +700,13 @@ function renderOverview() {
 }
 function onOverviewClick(e) {
   const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'ob-save') {
+    const prog = (document.querySelector('input[name="ob-prog"]:checked') || {}).value || 'riyan';
+    const theme = (document.querySelector('input[name="ob-theme"]:checked') || {}).value || 'navy';
+    S.profile = Object.assign({}, S.profile, { program: prog, theme, name: $('#ob-name').value.trim() || (S.profile && S.profile.name) || '' });
+    S.plan = PRESETS[prog].plan(); S.planFromSheet = true;
+    saveProfile(); savePlan(); applyTheme(); updateHeader(); renderOverview(); return;
+  }
   const t = todayIso();
   if (b.dataset.skipmove) { skipMove(t, b.dataset.skipmove); renderOverview(); return; }
   if (b.dataset.apply) {
@@ -721,7 +783,9 @@ function renderToday() {
       ${d !== t ? `<button class="btn ghost sm" data-shift="0">Ke hari ini</button>` : '<span class="pill">hari ini</span>'}
     </div>
     <datalist id="ex-names">${[...new Set(Object.values(S.plan.templates).flatMap(t => t.ex.map(x => x.n)).concat(LADDERS.flat().map(x => x.n)))].sort().map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>
-    <div class="grid g2" style="margin-bottom:16px">${sessionCard('home', v.home, d)}${sessionCard('gym', v.gym, d)}</div>
+    <div class="grid g2" style="margin-bottom:16px">${!v.home && !Object.values(S.plan.week).some(w => w.home)
+      ? `${sessionCard('gym', v.gym, d)}<details class="opt-home"><summary>+ Sesi di rumah (opsional)</summary>${sessionCard('home', v.home, d)}</details>`
+      : sessionCard('home', v.home, d) + sessionCard('gym', v.gym, d)}</div>
     <div class="grid g2">
       <div class="panel"><div class="panel-head"><div><div class="eyebrow">Opsional · isi kapan saja</div><h2>Ukuran hari ini</h2></div></div>
         <div class="fields">${mf}</div>${kompHtml}
@@ -731,6 +795,7 @@ function renderToday() {
           <div class="field"><span>Energi (1 = lemas, 5 = prima)</span><div class="seg" role="group" aria-label="Energi">${[1,2,3,4,5].map(n => `<button data-energy="${n}" aria-pressed="${v.energy === n}">${n}</button>`).join('')}</div></div>
           <label class="field" style="max-width:160px"><span>Tidur (jam)</span><input id="t-sleep" type="number" inputmode="decimal" step="0.5" min="0" max="24" data-sleep="1" value="${v.sleep ?? ''}"${pkAttr([0, 14, 0.5], 'Tidur', 'jam', 7)}></label>
           <label class="field"><span>Catatan</span><textarea id="t-note" data-note="1" placeholder="Contoh: bahu kanan agak pegal, pull-up masih pakai band hijau">${esc(v.note || '')}</textarea></label>
+          ${presetOf().notes ? `<div class="tip safety">${esc(presetOf().notes)}</div>` : ''}
           <div class="tip"><b>Aturan progresi.</b> Mudah dan teknik bagus: tambah 1–2 reps atau pakai variasi lebih sulit (knee → incline → negative → full push-up; squat → pause → split → Bulgarian split squat). Sedang: pertahankan. Berat atau teknik turun: kurangi reps atau set. Nyeri tajam atau nyeri sendi: hentikan gerakannya. Target RPE sekitar 7/10. Untuk gym, naikkan beban 2,5–5% setelah semua set mencapai batas atas target.</div>
         </div></div>
     </div>`;
@@ -833,7 +898,7 @@ function renderPlan() {
         <h3>${HARI[d]} ${w.gym ? '<span class="pill gym">gym</span>' : ''}</h3>
         <label class="h">Rumah ${sel('home', w.home, d)}</label>
         <label class="g">Gym ${sel('gym', w.gym, d)}</label></div>`; }).join('')}</div>
-      <p class="muted" style="font-size:13px;margin-bottom:0">${gymDays} hari gym terjadwal${gymDays !== tg ? ` · target kamu ${tg}×, sesuaikan jadwalnya` : ''}. Pola: gym Sel/Kam/Sab, kalistenik penuh di hari tanpa gym (Sen kaki, Rab core, Jum push), Minggu pemulihan. Di hari gym, rumah cukup mobilitas singkat. Kolom <b>Variasi</b> di menu gym berisi alat pengganti yang bisa dipilih langsung di tab Hari ini.</p>
+      <p class="muted" style="font-size:13px;margin-bottom:0">${gymDays} hari gym terjadwal${gymDays !== tg ? ` · target kamu ${tg}×, sesuaikan jadwalnya` : ''}. Program dasar: ${esc(presetOf().label)}. Kolom <b>Variasi</b> di menu gym berisi alat pengganti yang bisa dipilih langsung di tab Hari ini.</p>
     </div>
     <div class="panel-head"><div><div class="eyebrow">Perpustakaan</div><h2>Isi menu</h2></div>
       <div class="row"><button class="btn sm" data-tadd="home">+ Menu rumah</button><button class="btn sm" data-tadd="gym">+ Menu gym</button><button class="btn danger sm" data-reset="1">${armed === '__reset' ? 'Yakin? Klik lagi' : 'Kembalikan program awal'}</button></div></div>
@@ -864,7 +929,7 @@ function onPlanClick(e) {
     delete S.plan.templates[D.tdel]; Object.values(S.plan.week).forEach(w => { if (w.home === D.tdel) w.home = null; if (w.gym === D.tdel) w.gym = null; });
     armed = null; savePlan(); renderPlan(); return;
   }
-  if (D.reset) { if (armed !== '__reset') { armed = '__reset'; renderPlan(); return; } S.plan = DEFAULT_PLAN(); armed = null; savePlan(); renderPlan(); }
+  if (D.reset) { if (armed !== '__reset') { armed = '__reset'; renderPlan(); return; } S.plan = presetOf().plan(); armed = null; savePlan(); renderPlan(); }
 }
 
 /* ---------- UKURAN ---------- */
@@ -889,6 +954,8 @@ function renderMeasure() {
         <label class="field"><span>Tanggal mulai latihan</span><input id="p-start" type="date" data-p="startDate" value="${p.startDate || ''}" placeholder="${defStart}"></label>
         <label class="field"><span>Tinggi badan (cm)</span><input id="p-height" type="number" inputmode="decimal" data-p="height" data-num="1" value="${p.height ?? ''}"${pkAttr([120, 220, 0.5], 'Tinggi badan', 'cm', 165)}></label>
         <label class="field"><span>Target berat (kg)</span><input id="p-target" type="number" inputmode="decimal" step="0.1" data-p="targetWeight" data-num="1" value="${p.targetWeight ?? ''}"${pkAttr([40, 150, 0.5], 'Target berat', 'kg', latestOf('weight'))}></label>
+        <label class="field"><span>Warna tampilan</span><select id="p-theme" data-p="theme">${Object.entries(THEMES).map(([k, l]) => `<option value="${k}" ${(p.theme || 'navy') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field"><span>Program dasar</span><select id="p-program" data-p="program">${Object.entries(PRESETS).map(([k, v]) => `<option value="${k}" ${(p.program || 'riyan') === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
         <label class="field" style="grid-column:1/-1"><span>Tujuan utama</span><select id="p-goal" data-p="goal">${Object.entries(GOALS).map(([k, l]) => `<option value="${k}" ${(p.goal || 'recomp') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       </div>
       <p class="muted" style="font-size:13px;margin-bottom:0">Tujuan menentukan warna perubahan berat: hijau kalau bergerak ke arah yang kamu mau. Untuk rekomposisi, berat dibiarkan netral dan yang dipantau pinggang serta lengan.</p></div>
@@ -912,7 +979,7 @@ function renderMeasure() {
 }
 function onMeasureInput(e) {
   const x = e.target;
-  if (x.dataset.p) { S.profile = S.profile || {}; S.profile[x.dataset.p] = x.dataset.num ? numOrNull(x.value) : x.value; saveProfile(); updateHeader(); return; }
+  if (x.dataset.p) { S.profile = S.profile || {}; S.profile[x.dataset.p] = x.dataset.num ? numOrNull(x.value) : x.value; saveProfile(); updateHeader(); if (x.dataset.p === 'theme') applyTheme(); return; }
   if (x.dataset.base) { S.profile = S.profile || {}; S.profile.base = S.profile.base || {}; const n = numOrNull(x.value);
     if (n == null) delete S.profile.base[x.dataset.base]; else S.profile.base[x.dataset.base] = n;
     if (!S.profile.startDate) S.profile.startDate = iso(addDays(new Date(), -30));
@@ -925,6 +992,7 @@ function updateHeader() {
   const h = new Date().getHours(), part = h < 11 ? 'pagi' : h < 15 ? 'siang' : h < 18 ? 'sore' : 'malam';
   $('#hdr-eyebrow').textContent = `Selamat ${part}${p && p.name ? ', ' + p.name : ''}`;
   $('#hdr-title').textContent = p && p.name ? `${p.name} Workout Dash` : 'Workout Dash';
+  document.title = $('#hdr-title').textContent;
   const t = todayIso(), dt = parseD(t);
   $('#hdr-sub').textContent = !S.loaded ? 'Memuat data…' : `${HARI3[dt.getDay()]}, ${fmtD(t)}${p && p.startDate ? ` · Hari ke-${daysBetween(p.startDate, t) + 1}` : ''}`;
 }
@@ -945,6 +1013,7 @@ document.addEventListener('click', e => {
   if (f && S.date === todayIso()) f.scrollIntoView({ block: 'start' });
 });
 $('#tab-ringkasan').addEventListener('click', onOverviewClick);
+$('#tab-ringkasan').addEventListener('change', e => { if (e.target.name === 'ob-theme') document.documentElement.dataset.color = e.target.value; });
 const tToday = $('#tab-hariini'); tToday.addEventListener('input', onTodayInput); tToday.addEventListener('change', onTodayInput); tToday.addEventListener('click', onTodayClick);
 const tPlan = $('#tab-menu'); tPlan.addEventListener('input', onPlanInput); tPlan.addEventListener('change', e => { if (e.target.dataset.week !== undefined) onPlanInput(e); }); tPlan.addEventListener('click', onPlanClick);
 const tMeas = $('#tab-ukuran'); tMeas.addEventListener('input', onMeasureInput); tMeas.addEventListener('change', e => { if (e.target.dataset.p === 'goal' || e.target.dataset.p === 'startDate') { onMeasureInput(e); } });
@@ -1085,17 +1154,18 @@ show(RENDER[initial] ? initial : 'ringkasan');
   await store.init();
   try {
     const [profile, plan, days] = await Promise.all([store.get('fit/profile'), store.get('fit/plan'), store.days()]);
-    S.profile = profile; S.plan = plan && plan.templates ? plan : DEFAULT_PLAN();
+    S.profile = profile; S.planFromSheet = !!(plan && plan.templates);
+    S.plan = S.planFromSheet ? plan : presetOf().plan();
     days.forEach(d => { if (d && d.date) S.days[d.date] = d; });
   } catch (e) {
-    S.plan = S.plan || DEFAULT_PLAN();
+    S.plan = S.plan || presetOf().plan(); S.planFromSheet = true;
     setStatus('error', 'Data belum bisa dimuat. Muat ulang halaman.');
   }
   S.loaded = true;
   $('#local-warn').hidden = mode !== 'local';
   $('#offline-warn').hidden = mode !== 'cache';
   if ($('#status').dataset.s !== 'error') setStatus('saved', mode === 'sheets' ? 'Tersinkron' : mode === 'cache' ? 'Offline' : 'Hanya di perangkat');
-  updateHeader(); RENDER[S.tab]();
+  applyTheme(); updateHeader(); RENDER[S.tab]();
 })();
 updateHeader();
 })();
